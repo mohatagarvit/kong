@@ -1,6 +1,7 @@
 local cjson = require "cjson"
+local defaults = require "kong.db.strategies.connector".defaults
 local iteration = require "kong.db.iteration"
-local constants = require "kong.constants"
+local utils = require "kong.tools.utils"
 
 
 local setmetatable = setmetatable
@@ -46,9 +47,7 @@ local function validate_size_type(size)
 end
 
 
-local function validate_size_value(size)
-  local max = constants.MAX_PAGE_SIZE
-
+local function validate_size_value(size, max)
   if floor(size) ~= size or
            size < 1 or
            size > max then
@@ -455,8 +454,14 @@ local function generate_foreign_key_methods(schema)
           validate_offset_type(offset)
         end
 
+        local pagination = self.pagination
+
         if options ~= nil then
           validate_options_type(options)
+
+          if type(options.pagination) == "table" then
+            pagination = utils.table_merge(pagination, options.pagination)
+          end
         end
 
         local ok, errors = self.schema:validate_field(field, foreign_key)
@@ -467,14 +472,14 @@ local function generate_foreign_key_methods(schema)
 
         if size ~= nil then
           local err
-          ok, err = validate_size_value(size)
+          ok, err = validate_size_value(size, pagination.max_page_size)
           if not ok then
             local err_t = self.errors:invalid_size(err)
             return nil, tostring(err_t), err_t
           end
 
         else
-          size = constants.DEFAULT_PAGE_SIZE
+          size = pagination.page_size
         end
 
         if options ~= nil then
@@ -513,19 +518,25 @@ local function generate_foreign_key_methods(schema)
           validate_size_type(size)
         end
 
+        local pagination = self.pagination
+
+        if options ~= nil then
+          validate_options_type(options)
+
+          if type(options.pagination) == "table" then
+            pagination = utils.table_merge(pagination, options.pagination)
+          end
+        end
+
         if size ~= nil then
-          local ok, err = validate_size_value(size)
+          local ok, err = validate_size_value(size, pagination.max_page_size)
           if not ok then
             local err_t = self.errors:invalid_size(err)
             return iteration.failed(tostring(err_t), err_t)
           end
 
         else
-          size = constants.DEFAULT_ITERATION_SIZE
-        end
-
-        if options ~= nil then
-          validate_options_type(options)
+          size = pagination.page_size
         end
 
         local ok, errors = schema:validate_field(field, foreign_key)
@@ -733,11 +744,12 @@ function _M.new(db, schema, strategy, errors)
   local super      = setmetatable(fk_methods, DAO)
 
   local self = {
-    db       = db,
-    schema   = schema,
-    strategy = strategy,
-    errors   = errors,
-    super    = super,
+    db         = db,
+    schema     = schema,
+    strategy   = strategy,
+    errors     = errors,
+    pagination = utils.shallow_copy(defaults.pagination),
+    super      = super,
   }
 
   if schema.dao then
@@ -799,19 +811,25 @@ function DAO:page(size, offset, options)
     validate_offset_type(offset)
   end
 
+  local pagination = self.pagination
+
   if options ~= nil then
     validate_options_type(options)
+
+    if type(options.pagination) == "table" then
+      pagination = utils.table_merge(pagination, options.pagination)
+    end
   end
 
   if size ~= nil then
-    local ok, err = validate_size_value(size)
+    local ok, err = validate_size_value(size, pagination.max_page_size)
     if not ok then
       local err_t = self.errors:invalid_size(err)
       return nil, tostring(err_t), err_t
     end
 
   else
-    size = constants.DEFAULT_PAGE_SIZE
+    size = pagination.page_size
   end
 
   if options ~= nil then
@@ -842,19 +860,25 @@ function DAO:each(size, options)
     validate_size_type(size)
   end
 
+  local pagination = self.pagination
+
   if options ~= nil then
     validate_options_type(options)
+
+    if type(options.pagination) == "table" then
+      pagination = utils.table_merge(pagination, options.pagination)
+    end
   end
 
   if size ~= nil then
-    local ok, err = validate_size_value(size)
+    local ok, err = validate_size_value(size, pagination.max_page_size)
     if not ok then
       local err_t = self.errors:invalid_size(err)
       return nil, tostring(err_t), err_t
     end
 
   else
-    size = constants.DEFAULT_ITERATION_SIZE
+    size = pagination.page_size
   end
 
   if options ~= nil then

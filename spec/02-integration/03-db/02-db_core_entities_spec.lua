@@ -1,4 +1,5 @@
 local Errors  = require "kong.db.errors"
+local defaults = require "kong.db.strategies.connector".defaults
 local utils   = require "kong.tools.utils"
 local helpers = require "spec.helpers"
 local cjson   = require "cjson"
@@ -219,7 +220,7 @@ for _, strategy in helpers.each_strategy() do
           it("returns an error with invalid size", function()
             local rows, err, err_t = db.routes:page(5.5)
             assert.is_nil(rows)
-            local message  = "size must be an integer between 1 and 1000"
+            local message  = "size must be an integer between 1 and " .. defaults.pagination.max_page_size
             assert.equal(fmt("[%s] %s", strategy, message), err)
             assert.same({
               code     = Errors.codes.INVALID_SIZE,
@@ -251,13 +252,19 @@ for _, strategy in helpers.each_strategy() do
                 methods = { "GET" },
               })
             end
+
+
+            db.routes.pagination.page_size = 100
+            db.routes.pagination.max_page_size = 1000
           end)
 
           lazy_teardown(function()
+            db.routes.pagination.page_size = defaults.pagination.page_size
+            db.routes.pagination.max_page_size = defaults.pagination.max_page_size
             db:truncate("routes")
           end)
 
-          it("defaults page_size = 100 and invokes schema post-processing", function()
+          it("= 100 and invokes schema post-processing", function()
             local rows, err, err_t = db.routes:page()
             assert.is_nil(err_t)
             assert.is_nil(err)
@@ -1921,9 +1928,17 @@ for _, strategy in helpers.each_strategy() do
                   service = service,
                 }
               end
+
+              db.routes.pagination.page_size = 100
+              db.routes.pagination.max_page_size = 1000
             end)
 
-            it("defaults page_size = 100", function()
+            lazy_teardown(function()
+              db.routes.pagination.page_size = defaults.pagination.page_size
+              db.routes.pagination.max_page_size = defaults.pagination.max_page_size
+            end)
+
+            it("= 100", function()
               local rows, err, err_t = db.routes:page_for_service {
                 id = service.id,
               }
